@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandle(t *testing.T) {
-	handler := HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[Path]Path)}}
+	handler := HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[Path]CacheEntry)}}
 
 	cPdf := make(chan bool, 1)
 	defer close(cPdf)
@@ -47,17 +48,17 @@ func TestHandle(t *testing.T) {
 
 	path := filepath.Join(tmp, "random.bin")
 
-	f, err := os.Create(path)
+	fPdf, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	f.Write(magicPdf)
+	fPdf.Write(magicPdf)
 
 	var seed [32]byte
 	r := rand.NewChaCha8(seed)
 
-	if _, err = io.CopyN(f, r, 100<<10); err != nil {
+	if _, err = io.CopyN(fPdf, r, 100<<10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,20 +70,20 @@ func TestHandle(t *testing.T) {
 		t.Error("wrong handler called")
 
 	}
-	f.Close()
+	defer fPdf.Close()
 
 	pathArb := filepath.Join(tmp, "random_arb.bin")
 
-	f, err = os.Create(pathArb)
+	fArb, err := os.Create(pathArb)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer f.Close()
+	defer fArb.Close()
 
-	f.Write(magicArb)
+	fArb.Write(magicArb)
 
-	if _, err = io.CopyN(f, r, 100<<10); err != nil {
+	if _, err = io.CopyN(fArb, r, 100<<10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,11 +95,30 @@ func TestHandle(t *testing.T) {
 	case <-cArb:
 	}
 
+	time.Sleep(time.Millisecond)
+
 	oldPdfRet := strings.Clone(pdfRet)
 	pdfRet = filepath.Join(tmp, "pdfReturn1")
+	f3, _ := os.Create(pdfRet)
+	defer f3.Close()
 
-	if ret, err := handler.handleBinary(Path(path)); string(ret) != oldPdfRet || err != nil {
-		t.Errorf("cache no func, %s \n %s", ret, err.Error())
+	ret, err := handler.handleBinary(Path(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ret) != oldPdfRet {
+		t.Errorf("cache no func")
+	}
+	if _, err = io.CopyN(fPdf, r, 100<<10); err != nil {
+		t.Fatal(err)
+	}
+
+	ret, err = handler.handleBinary(Path(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ret) == oldPdfRet {
+		t.Errorf("cache time modification func no op")
 	}
 }
 

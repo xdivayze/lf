@@ -6,24 +6,32 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 )
 
 type Path string
 
+type CacheEntry struct {
+	path    Path
+	modTime time.Time
+}
+
 type BinaryHandlerCache interface {
-	getVal(path Path) Path
-	setVal(key Path, val Path)
+	getVal(path Path) (CacheEntry, bool)
+	setVal(key Path, val CacheEntry)
 }
 
 type BinaryHandlerCacheHashMap struct {
-	cache map[Path]Path
+	cache map[Path]CacheEntry
 }
 
-func (binaryHandlerCache BinaryHandlerCacheHashMap) getVal(path Path) Path {
-	return binaryHandlerCache.cache[path]
+func (binaryHandlerCache BinaryHandlerCacheHashMap) getVal(path Path) (CacheEntry, bool) {
+	u, ok := binaryHandlerCache.cache[path]
+
+	return u, ok
 }
 
-func (binaryHandlerCache *BinaryHandlerCacheHashMap) setVal(key Path, val Path) {
+func (binaryHandlerCache *BinaryHandlerCacheHashMap) setVal(key Path, val CacheEntry) {
 	binaryHandlerCache.cache[key] = val
 }
 
@@ -51,11 +59,13 @@ type HeuristicBinaryHandler struct {
 }
 
 // heristic handler
-// TODO check caching timestamp vs modification timestamp to ensure proper cache retrieval
 func (binaryHandler *HeuristicBinaryHandler) handleBinary(path Path) (Path, error) {
-	ret := binaryHandler.cache.getVal(path)
-	if ret != "" {
-		return ret, nil
+	cacheRet, ok := binaryHandler.cache.getVal(path)
+	if ok {
+		info, err := os.Stat(string(path))
+		if err == nil && info.ModTime().Before(cacheRet.modTime) {
+			return cacheRet.path, nil
+		}
 	}
 
 	f, err := os.Open(string(path))
@@ -95,7 +105,7 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path Path) (Path, erro
 		return "", fmt.Errorf("no handlers found for the file")
 	}
 
-	ret, err = binaryHandler.specificHandlers[idx].handler(path)
+	ret, err := binaryHandler.specificHandlers[idx].handler(path)
 	if err != nil {
 		return "", fmt.Errorf("error occured in the specific handler:\n %w", err)
 	}
@@ -104,7 +114,7 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path Path) (Path, erro
 		return "", fmt.Errorf("the specific handler returned a bad path:\n%w", err)
 	}
 
-	binaryHandler.cache.setVal(path, Path(strings.Clone(string(ret))))
+	binaryHandler.cache.setVal(path, CacheEntry{path: Path(strings.Clone(string(ret))), modTime: time.Now()})
 	return ret, nil
 }
 
