@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 type Path string
@@ -50,9 +51,10 @@ type HeuristicBinaryHandler struct {
 }
 
 // heristic handler
-func (binaryHandler HeuristicBinaryHandler) handleBinary(path Path) (Path, error) {
+// TODO check caching timestamp vs modification timestamp to ensure proper cache retrieval
+func (binaryHandler *HeuristicBinaryHandler) handleBinary(path Path) (Path, error) {
 	ret := binaryHandler.cache.getVal(path)
-	if ret == "" {
+	if ret != "" {
 		return ret, nil
 	}
 
@@ -68,17 +70,26 @@ func (binaryHandler HeuristicBinaryHandler) handleBinary(path Path) (Path, error
 
 	f.Close()
 
-	done := make(chan int)
-	defer close(done)
+	done := make(chan int, len(binaryHandler.specificHandlers))
 	idx := -1
-	for i := range len(binaryHandler.specificHandlers) {
-		go func() {
-			if bytes.HasPrefix(buf, binaryHandler.specificHandlers[i].magic) {
-				done <- i
+
+	if len(binaryHandler.specificHandlers) > 0 {
+		for i := range len(binaryHandler.specificHandlers) {
+			go func() {
+				if bytes.HasPrefix(buf, binaryHandler.specificHandlers[i].magic) {
+					done <- i
+				} else {
+					done <- -1
+				}
+			}()
+		}
+
+		for range len(binaryHandler.specificHandlers) {
+			if idx = <-done; idx != -1 {
+				break
 			}
-		}()
+		}
 	}
-	idx = <-done
 
 	if idx == -1 {
 		return "", fmt.Errorf("no handlers found for the file")
@@ -93,23 +104,32 @@ func (binaryHandler HeuristicBinaryHandler) handleBinary(path Path) (Path, error
 		return "", fmt.Errorf("the specific handler returned a bad path:\n%w", err)
 	}
 
-	binaryHandler.cache.setVal(path, ret)
+	binaryHandler.cache.setVal(path, Path(strings.Clone(string(ret))))
 	return ret, nil
 }
 
 func (binaryHandler *HeuristicBinaryHandler) addBinaryType(entry SpecificHandlerEntry, overwrite bool) bool {
-	done := make(chan int)
-	defer close(done)
+	done := make(chan int, len(binaryHandler.specificHandlers))
 	idx := -1
-	for i := range len(binaryHandler.specificHandlers) {
-		go func() {
-			if bytes.Equal(binaryHandler.specificHandlers[i].magic, entry.magic) {
-				done <- i
+
+	if len(binaryHandler.specificHandlers) > 0 {
+		for i := range len(binaryHandler.specificHandlers) {
+			go func() {
+				if bytes.Equal(binaryHandler.specificHandlers[i].magic, entry.magic) {
+					done <- i
+				} else {
+					done <- -1
+				}
+			}()
+		}
+
+		for range len(binaryHandler.specificHandlers) {
+			if idx = <-done; idx != -1 {
+				break
 			}
-		}()
+		}
 	}
 
-	idx = <-done
 	if idx == -1 {
 		binaryHandler.specificHandlers = append(binaryHandler.specificHandlers, entry)
 		return true
