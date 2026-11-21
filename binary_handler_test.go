@@ -11,7 +11,7 @@ import (
 )
 
 func TestHandle(t *testing.T) {
-	handler := HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[Path]CacheEntry)}}
+	handler := HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[string]CacheEntry)}}
 
 	cPdf := make(chan bool, 1)
 	defer close(cPdf)
@@ -22,9 +22,9 @@ func TestHandle(t *testing.T) {
 	f1, _ := os.Create(pdfRet)
 	defer f1.Close()
 
-	pdfHandler := func(path Path) (Path, error) {
+	pdfHandler := func(path string) (string, error) {
 		cPdf <- true
-		return Path(pdfRet), nil
+		return string(pdfRet), nil
 	}
 
 	entryPdf := SpecificHandlerEntry{handler: pdfHandler, magic: magicPdf}
@@ -38,9 +38,9 @@ func TestHandle(t *testing.T) {
 	f2, _ := os.Create(arbRet)
 	defer f2.Close()
 
-	arbHandler := func(path Path) (Path, error) {
+	arbHandler := func(path string) (string, error) {
 		cArb <- true
-		return Path(arbRet), nil
+		return string(arbRet), nil
 	}
 	entryArb := SpecificHandlerEntry{handler: arbHandler, magic: magicArb}
 
@@ -62,7 +62,7 @@ func TestHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handler.handleBinary(Path(path))
+	handler.handleBinary(string(path))
 
 	select {
 	case <-cPdf:
@@ -87,7 +87,7 @@ func TestHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handler.handleBinary(Path(pathArb))
+	handler.handleBinary(string(pathArb))
 
 	select {
 	case <-cPdf:
@@ -102,7 +102,7 @@ func TestHandle(t *testing.T) {
 	f3, _ := os.Create(pdfRet)
 	defer f3.Close()
 
-	ret, err := handler.handleBinary(Path(path))
+	ret, err := handler.handleBinary(string(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ret, err = handler.handleBinary(Path(path))
+	ret, err = handler.handleBinary(string(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestHandle(t *testing.T) {
 }
 
 func TestAddBinaryHandler(t *testing.T) {
-	specificHandler := func(path Path) (Path, error) {
+	specificHandler := func(path string) (string, error) {
 		return "", nil
 	}
 
@@ -162,7 +162,7 @@ func TestCheckIsNotBinary(t *testing.T) {
 	data := "this is a non binary text file. it should pass as a non binary file in the test."
 	f.WriteString(data)
 
-	ret, err := handler.checkIsBinary(Path(path))
+	ret, err := handler.checkIsBinary(string(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestCheckIsBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ret, err := handler.checkIsBinary(Path(path))
+	ret, err := handler.checkIsBinary(string(path))
 	if err != nil {
 		t.Fatal(err)
 	}

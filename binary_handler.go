@@ -9,40 +9,38 @@ import (
 	"time"
 )
 
-type Path string
-
 type CacheEntry struct {
-	path    Path
+	path    string
 	modTime time.Time
 }
 
 type BinaryHandlerCache interface {
-	getVal(path Path) (CacheEntry, bool)
-	setVal(key Path, val CacheEntry)
+	getVal(path string) (CacheEntry, bool)
+	setVal(key string, val CacheEntry)
 }
 
 type BinaryHandlerCacheHashMap struct {
-	cache map[Path]CacheEntry
+	cache map[string]CacheEntry
 }
 
-func (binaryHandlerCache BinaryHandlerCacheHashMap) getVal(path Path) (CacheEntry, bool) {
+func (binaryHandlerCache BinaryHandlerCacheHashMap) getVal(path string) (CacheEntry, bool) {
 	u, ok := binaryHandlerCache.cache[path]
 
 	return u, ok
 }
 
-func (binaryHandlerCache *BinaryHandlerCacheHashMap) setVal(key Path, val CacheEntry) {
+func (binaryHandlerCache *BinaryHandlerCacheHashMap) setVal(key string, val CacheEntry) {
 	binaryHandlerCache.cache[key] = val
 }
 
 type BinaryType interface {
-	isThisBinary(path Path) (bool, error)
-	binaryHandler(path Path) (string, error)
+	isThisBinary(path string) (bool, error)
+	binaryHandler(path string) (string, error)
 }
 
 type BinaryHandler interface {
-	handleBinary(path Path) (Path, error)
-	checkIsBinary(path Path) (bool, error)
+	handleBinary(path string) (string, error)
+	checkIsBinary(path string) (bool, error)
 
 	// return true on change
 	addBinaryType(binaryType BinaryType, overwite bool) bool
@@ -50,7 +48,7 @@ type BinaryHandler interface {
 
 type SpecificHandlerEntry struct {
 	magic   []byte
-	handler func(Path) (Path, error)
+	handler func(string) (string, error)
 }
 
 type HeuristicBinaryHandler struct {
@@ -59,16 +57,16 @@ type HeuristicBinaryHandler struct {
 }
 
 // heristic handler
-func (binaryHandler *HeuristicBinaryHandler) handleBinary(path Path) (Path, error) {
+func (binaryHandler *HeuristicBinaryHandler) handleBinary(path string) (string, error) {
 	cacheRet, ok := binaryHandler.cache.getVal(path)
 	if ok {
-		info, err := os.Stat(string(path))
+		info, err := os.Stat(path)
 		if err == nil && info.ModTime().Before(cacheRet.modTime) {
 			return cacheRet.path, nil
 		}
 	}
 
-	f, err := os.Open(string(path))
+	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("error when opening path:\n %w", err)
 	}
@@ -110,11 +108,11 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path Path) (Path, erro
 		return "", fmt.Errorf("error occured in the specific handler:\n %w", err)
 	}
 
-	if _, err = os.Stat(string(ret)); err != nil {
+	if _, err = os.Stat(ret); err != nil {
 		return "", fmt.Errorf("the specific handler returned a bad path:\n%w", err)
 	}
 
-	binaryHandler.cache.setVal(path, CacheEntry{path: Path(strings.Clone(string(ret))), modTime: time.Now()})
+	binaryHandler.cache.setVal(path, CacheEntry{path: strings.Clone(ret), modTime: time.Now()})
 	return ret, nil
 }
 
@@ -151,8 +149,8 @@ func (binaryHandler *HeuristicBinaryHandler) addBinaryType(entry SpecificHandler
 	return false
 }
 
-func (binaryHandler HeuristicBinaryHandler) checkIsBinary(path Path) (bool, error) {
-	f, err := os.Open(string(path))
+func (binaryHandler HeuristicBinaryHandler) checkIsBinary(path string) (bool, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return false, fmt.Errorf("error when opening path:\n %w", err)
 	}
