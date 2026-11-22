@@ -463,7 +463,9 @@ func init() {
 	gLocalOpts.sortignoredia = make(map[string]bool)
 
 	gOpts.binaryHandler = &HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[string]CacheEntry)}}
-	RegisterHandlers(gOpts.binaryHandler)
+	if err := RegisterHandlers(gOpts.binaryHandler); err != nil {
+		gOpts.binaryHandler = nil
+	}
 
 	setDefaults()
 }

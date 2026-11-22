@@ -14,7 +14,7 @@ import (
 )
 
 // TODO add sigint cache write to disk
-// TODO add verification for the returned cached path
+// TODO add verification for the returned cached path, is the recovered cache still valid?
 type CacheEntry struct {
 	path    string
 	modTime time.Time
@@ -66,6 +66,10 @@ func pdfHandler(path string) (string, error) {
 
 	base = filepath.Join(base, "lf")
 
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		return "", err
+	}
+
 	wpathTmp, err := os.CreateTemp(base, "pdftotext-*.txt")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary file:\n%w", err)
@@ -88,14 +92,17 @@ func pdfHandler(path string) (string, error) {
 
 	wpathTmp.Close()
 
-	os.Rename(wpathTmp.Name(), wpath)
+	if err := os.Rename(wpathTmp.Name(), wpath); err != nil {
+		return "", fmt.Errorf("cache temporary couldnt be renamed:\n %w", err)
+	}
 	return wpath, nil
 }
 
 func RegisterHandlers(handler BinaryHandler) error {
+	// TODO check if pdftotext is installed before adding the handler
 	magicPdf := []byte{0x25, 0x50, 0x44, 0x46, 0x2d}
 	pdfEntry := SpecificHandlerEntry{magic: magicPdf, handler: pdfHandler}
-	if handler.addBinaryType(pdfEntry, true) {
+	if !handler.addBinaryType(pdfEntry, true) {
 		return fmt.Errorf("pdf handler couldnt be added to the specific handler map")
 	}
 
@@ -106,9 +113,13 @@ func RegisterHandlers(handler BinaryHandler) error {
 func (binaryHandler *HeuristicBinaryHandler) handleBinary(path string) (string, error) {
 	cacheRet, ok := binaryHandler.cache.getVal(path)
 	if ok {
-		info, err := os.Stat(path)
-		if err == nil && info.ModTime().Before(cacheRet.modTime) {
-			return cacheRet.path, nil
+		if _, err := os.Stat(cacheRet.path); err == nil {
+
+			info, err := os.Stat(path)
+			if err == nil && info.ModTime().Before(cacheRet.modTime) {
+				return cacheRet.path, nil
+			}
+			os.Remove(cacheRet.path)
 		}
 	}
 
@@ -116,13 +127,12 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path string) (string, 
 	if err != nil {
 		return "", fmt.Errorf("error when opening path:\n %w", err)
 	}
+	defer f.Close()
 
 	buf := make([]byte, 32)
 	if _, err = f.Read(buf); err != nil && err != io.EOF {
 		return "", fmt.Errorf("error when reading file:\n %w", err)
 	}
-
-	f.Close()
 
 	done := make(chan int, len(binaryHandler.specificHandlers))
 	idx := -1
@@ -195,6 +205,7 @@ func (binaryHandler *HeuristicBinaryHandler) addBinaryType(entry SpecificHandler
 	return false
 }
 
+// TODO switch with isHandleable and check for magic words instead. some pdfs dont have 0x00 in first few bytes
 func (binaryHandler HeuristicBinaryHandler) checkIsBinary(path string) (bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
