@@ -2,13 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
 
+// TODO add sigint cache write to disk
+// TODO add verification for the returned cached path
 type CacheEntry struct {
 	path    string
 	modTime time.Time
@@ -33,17 +39,12 @@ func (binaryHandlerCache *BinaryHandlerCacheHashMap) setVal(key string, val Cach
 	binaryHandlerCache.cache[key] = val
 }
 
-type BinaryType interface {
-	isThisBinary(path string) (bool, error)
-	binaryHandler(path string) (string, error)
-}
-
 type BinaryHandler interface {
 	handleBinary(path string) (string, error)
 	checkIsBinary(path string) (bool, error)
 
 	// return true on change
-	addBinaryType(binaryType BinaryType, overwite bool) bool
+	addBinaryType(binaryType SpecificHandlerEntry, overwite bool) bool
 }
 
 type SpecificHandlerEntry struct {
@@ -54,6 +55,53 @@ type SpecificHandlerEntry struct {
 type HeuristicBinaryHandler struct {
 	cache            BinaryHandlerCache
 	specificHandlers []SpecificHandlerEntry
+}
+
+// requires pdftotext
+func pdfHandler(path string) (string, error) {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	base = filepath.Join(base, "lf")
+
+	wpathTmp, err := os.CreateTemp(base, "pdftotext-*.txt")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file:\n%w", err)
+	}
+	defer os.Remove(wpathTmp.Name())
+
+	wpath := filepath.Join(base, rand.Text()+".txt")
+
+	executable := "pdftotext"
+	args := []string{"-nopgbrk", "-layout", "-enc", "UTF-8", "-f", "1", "-l", "20", path, wpathTmp.Name()}
+
+	fmt.Println(args)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, executable, args...)
+	if err = cmd.Run(); err != nil {
+		wpathTmp.Close()
+		return "", fmt.Errorf("pdftotext returned non-zero exit code:\n %w", err)
+	}
+
+	wpathTmp.Close()
+
+	os.Rename(wpathTmp.Name(), wpath)
+	return wpath, nil
+}
+
+func RegisterHandlers(handler BinaryHandler) error {
+	magicPdf := []byte{0x25, 0x50, 0x44, 0x46, 0x2d}
+	pdfEntry := SpecificHandlerEntry{magic: magicPdf, handler: pdfHandler}
+	if handler.addBinaryType(pdfEntry, true) {
+		return fmt.Errorf("pdf handler couldnt be added to the specific handler map")
+	}
+
+	return nil
 }
 
 // heristic handler

@@ -928,6 +928,17 @@ func (nav *nav) preview(path string, win *win, mode string) {
 			return
 		}
 
+		if gOpts.binaryHandler != nil {
+			if isBinary, err := gOpts.binaryHandler.checkIsBinary(path); err == nil && isBinary {
+				if nPath, err := gOpts.binaryHandler.handleBinary(path); err == nil {
+					nPath = strings.TrimSpace(nPath)
+					if nPath != "" {
+						path = nPath
+					}
+				}
+			}
+		}
+
 		f, err := os.Open(path)
 		if err != nil {
 			log.Printf("previewing file: %s", err)

@@ -10,6 +10,16 @@ import (
 	"time"
 )
 
+// remove before commit
+func TestPDFHandler(t *testing.T) {
+	ret, err := pdfHandler("/home/cavej/Desktop/tue/5EPB0/Lecture_2.1_Reflection_Refraction.pdf")
+	if err != nil {
+		t.Fatalf("handler returned error %s", err.Error())
+	}
+
+	t.Logf("ret path: %s", ret)
+}
+
 func TestHandle(t *testing.T) {
 	handler := HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[string]CacheEntry)}}
 

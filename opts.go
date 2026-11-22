@@ -83,6 +83,7 @@ func (s borderStyle) String() string {
 var gOpts struct {
 	anchorfind       bool
 	autoquit         bool
+	binaryHandler    BinaryHandler // addition
 	borderfmt        string
 	borderstyle      borderStyle
 	cleaner          string
@@ -460,6 +461,9 @@ func init() {
 	gLocalOpts.sortby = make(map[string]sortMethod)
 	gLocalOpts.sortignorecase = make(map[string]bool)
 	gLocalOpts.sortignoredia = make(map[string]bool)
+
+	gOpts.binaryHandler = &HeuristicBinaryHandler{cache: &BinaryHandlerCacheHashMap{cache: make(map[string]CacheEntry)}}
+	RegisterHandlers(gOpts.binaryHandler)
 
 	setDefaults()
 }
