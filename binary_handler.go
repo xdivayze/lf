@@ -77,8 +77,6 @@ func pdfHandler(path string) (string, error) {
 	executable := "pdftotext"
 	args := []string{"-nopgbrk", "-layout", "-enc", "UTF-8", "-f", "1", "-l", "20", path, wpathTmp.Name()}
 
-	fmt.Println(args)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
