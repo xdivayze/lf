@@ -15,6 +15,7 @@ import (
 
 // TODO add sigint cache write to disk
 // TODO add verification for the returned cached path, is the recovered cache still valid?
+// TODO map keys will be hashes of filepaths, mod times recovered on startup, cache access done by hashing
 type CacheEntry struct {
 	path    string
 	modTime time.Time
@@ -58,6 +59,7 @@ type HeuristicBinaryHandler struct {
 }
 
 // requires pdftotext
+// TODO return temp path from here, rename will be done by the cache handling
 func pdfHandler(path string) (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
@@ -159,6 +161,7 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path string) (string, 
 		return "", fmt.Errorf("no handlers found for the file")
 	}
 
+	// TODO rename the returned temporary path to sha256(text) + ".extension"
 	ret, err := binaryHandler.specificHandlers[idx].handler(path)
 	if err != nil {
 		return "", fmt.Errorf("error occured in the specific handler:\n %w", err)
