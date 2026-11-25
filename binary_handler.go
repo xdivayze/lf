@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -59,7 +59,6 @@ type HeuristicBinaryHandler struct {
 }
 
 // requires pdftotext
-// TODO return temp path from here, rename will be done by the cache handling
 func pdfHandler(path string) (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
@@ -76,9 +75,6 @@ func pdfHandler(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary file:\n%w", err)
 	}
-	defer os.Remove(wpathTmp.Name())
-
-	wpath := filepath.Join(base, rand.Text()+".txt")
 
 	executable := "pdftotext"
 	args := []string{"-nopgbrk", "-layout", "-enc", "UTF-8", "-f", "1", "-l", "20", path, wpathTmp.Name()}
@@ -94,10 +90,7 @@ func pdfHandler(path string) (string, error) {
 
 	wpathTmp.Close()
 
-	if err := os.Rename(wpathTmp.Name(), wpath); err != nil {
-		return "", fmt.Errorf("cache temporary couldnt be renamed:\n %w", err)
-	}
-	return wpath, nil
+	return wpathTmp.Name(), nil
 }
 
 func RegisterHandlers(handler BinaryHandler) error {
@@ -161,7 +154,6 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path string) (string, 
 		return "", fmt.Errorf("no handlers found for the file")
 	}
 
-	// TODO rename the returned temporary path to sha256(text) + ".extension"
 	ret, err := binaryHandler.specificHandlers[idx].handler(path)
 	if err != nil {
 		return "", fmt.Errorf("error occured in the specific handler:\n %w", err)
@@ -171,7 +163,19 @@ func (binaryHandler *HeuristicBinaryHandler) handleBinary(path string) (string, 
 		return "", fmt.Errorf("the specific handler returned a bad path:\n%w", err)
 	}
 
+	base, err := os.UserCacheDir()
+	if err == nil {
+		base = filepath.Join(base, "lf")
+		if err := os.MkdirAll(base, 0o755); err == nil {
+			savePath := filepath.Join(base, fmt.Sprintf("%x.txt", sha256.Sum256([]byte(path))))
+
+			os.Rename(ret, savePath)
+			ret = savePath
+		}
+	}
+
 	binaryHandler.cache.setVal(path, CacheEntry{path: strings.Clone(ret), modTime: time.Now()})
+
 	return ret, nil
 }
 
